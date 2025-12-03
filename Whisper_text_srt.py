@@ -8,13 +8,21 @@ import numpy as np
 import soundfile as sf  # pip install soundfile
 
 class WhisperAudioToSRTText:
+    languages_by_name = None
     
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "audio": ("AUDIO",),  # ComfyUI "File Input" node থেকে
-                "model": (["base", "tiny", "small", "medium", "large"],),
+                "model": (['tiny.en', 'tiny', 'base.en', 'base', 'small.en', 'small', 'medium.en', 'medium', 'large-v1', 'large-v2', 'large-v3', 'large', 'large-v3-turbo', 'turbo'],),
+            },
+            "optional": {
+                "language": (
+                    ["auto"] +
+                    [s.capitalize() for s in sorted(list(whisper.tokenizer.LANGUAGES.values())) ],
+                ),
+                "prompt": ("STRING", {"default":""}),
             }
         }
 
@@ -23,7 +31,7 @@ class WhisperAudioToSRTText:
     FUNCTION = "transcribe"
     CATEGORY = "WhisperSRT"
 
-    def transcribe(self, audio, model):
+    def transcribe(self, audio, model, language, prompt):
 
         temp_dir = folder_paths.get_temp_directory()
         os.makedirs(temp_dir, exist_ok=True)
@@ -34,8 +42,16 @@ class WhisperAudioToSRTText:
         print(f"[Whisper Node] Transcribing temporary .wav file: {audio_save_path}")
         print("[Whisper Node] Loading Whisper model...")
         w_model = whisper.load_model(model)
-        result = w_model.transcribe(audio_save_path, word_timestamps=True)
 
+        transcribe_args = {"initial_prompt": prompt}
+
+        if language != "auto":
+            if WhisperAudioToSRTText.languages_by_name is None:
+                WhisperAudioToSRTText.languages_by_name = {v.lower(): k for k, v in whisper.tokenizer.LANGUAGES.items()}
+            transcribe_args['language'] = WhisperAudioToSRTText.languages_by_name[language.lower()]
+        
+        result = w_model.transcribe(audio_save_path, word_timestamps=True, **transcribe_args)
+        
         segments = result["segments"]
         full_text = result["text"]
         srt_text = self.generate_srt_text(segments)
